@@ -150,9 +150,15 @@ class PanWFapi:
             try:
                 ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             except AttributeError:
-                raise PanXapiError('SSL module has no SSLContext()')
+                raise PanWFapiError('SSL module has no SSLContext()')
         elif _have_certifi:
             self.ssl_context = self._certifi_ssl_context()
+
+        # handle Python versions with no ssl.CertificateError
+        if hasattr(ssl, 'CertificateError'):
+            self._certificateerror = ssl.CertificateError
+        else:
+            self._certificateerror = NotImplementedError  # XXX Can't happen
 
         init_panrc = {}  # .panrc args from constructor
         if hostname is not None:
@@ -336,6 +342,9 @@ class PanWFapi:
 
         try:
             response = self._urlopen(**kwargs)
+        except self._certificateerror as e:
+            self._msg = 'ssl.CertificateError: %s' % e
+            return False
         except (URLError, IOError) as e:
             self._log(DEBUG2, 'urlopen() exception: %s', sys.exc_info())
             self._msg = str(e)

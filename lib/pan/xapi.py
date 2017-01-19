@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2013-2015 Kevin Steves <kevin.steves@pobox.com>
+# Copyright (c) 2013-2016 Kevin Steves <kevin.steves@pobox.com>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -74,7 +74,8 @@ class PanXapi:
                  use_http=False,
                  use_get=False,
                  timeout=None,
-                 ssl_context=None):
+                 ssl_context=None,
+                 **kwargs):
         self._log = logging.getLogger(__name__).log
         self.tag = tag
         self.api_username = None
@@ -86,6 +87,7 @@ class PanXapi:
         self.use_get = use_get
         self.timeout = timeout
         self.ssl_context = ssl_context
+        self._legacy_api = kwargs.get('_legacy_api', False)
 
         self._log(DEBUG3, 'Python version: %s', sys.version)
         self._log(DEBUG3, 'xml.etree.ElementTree version: %s', etree.VERSION)
@@ -112,6 +114,12 @@ class PanXapi:
                 ssl.SSLContext(ssl.PROTOCOL_SSLv23)
             except AttributeError:
                 raise PanXapiError('SSL module has no SSLContext()')
+
+        # handle Python versions with no ssl.CertificateError
+        if hasattr(ssl, 'CertificateError'):
+            self._certificateerror = ssl.CertificateError
+        else:
+            self._certificateerror = NotImplementedError  # XXX Can't happen
 
         init_panrc = {}  # .panrc args from constructor
         if api_username is not None:
@@ -179,7 +187,8 @@ class PanXapi:
         self.uri = '%s://%s' % (scheme, self.hostname)
         if self.port is not None:
             self.uri += ':%s' % self.port
-        self.uri += '/api/'
+        # _legacy_api is used for PAN-OS < 4.1.0
+        self.uri += '/api/' if not self._legacy_api else '/esp/restapi.esp'
 
         if _legacy_urllib:
             self._log(DEBUG2, 'using legacy urllib')
@@ -534,6 +543,9 @@ class PanXapi:
             response = urlopen(**kwargs)
 
         # XXX handle httplib.BadStatusLine when http to port 443
+        except self._certificateerror as e:
+            self.status_detail = 'ssl.CertificateError: %s' % e
+            return False
         except URLError as error:
             msg = 'URLError:'
             if hasattr(error, 'code'):
@@ -799,6 +811,36 @@ class PanXapi:
         if not self.__set_response(response):
             raise PanXapiError(self.status_detail)
 
+    def __legacy_commit_poll(self, query, interval=None, timeout=None):
+        """On PAN-OS < 4.1.0, keep polling until the commit is finished.
+
+        type=op API request is not available in PAN-OS < 4.1.0, so
+        instead of checking on the job id, keep trying to commit until
+        there is nothing to commit.
+        """
+
+        start_time = time.time()
+        while True:
+            # sleep at the top of the loop so we don't poll
+            # immediately after commit
+            self._log(DEBUG2, 'sleep %.2f seconds', interval)
+            time.sleep(interval)
+
+            response = self.__api_request(query)
+            if not response:
+                raise PanXapiError(self.status_detail)
+            self.__set_response(response)
+            if self.status_detail == "There are no changes to commit.":
+                self._log(DEBUG2, 'commit finished')
+                return
+            else:
+                self._log(DEBUG2, 'commit pending...')
+
+            if (timeout is not None and timeout != 0 and
+                    time.time() > start_time + timeout):
+                raise PanXapiError('timeout waiting for legacy commit ' +
+                                   'completion')
+
     def commit(self, cmd=None, action=None, sync=False,
                interval=None, timeout=None, extra_qs=None):
         self.__set_api_key()
@@ -833,7 +875,9 @@ class PanXapi:
             query['action'] = action
         if extra_qs is not None:
             query = self.__merge_extra_qs(query, extra_qs)
-
+        if self._legacy_api:
+            query['type'] = 'config'
+            query['action'] = 'commit'
         response = self.__api_request(query)
         if not response:
             raise PanXapiError(self.status_detail)
@@ -843,6 +887,11 @@ class PanXapi:
 
         if sync is not True:
             return
+
+        if self._legacy_api:
+            return self.__legacy_commit_poll(query,
+                                             interval=interval,
+                                             timeout=timeout)
 
         job = self.element_root.find('./result/job')
         if job is None:
