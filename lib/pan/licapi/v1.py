@@ -100,7 +100,9 @@ class PanLicapi:
         self.base_uri = self.uri + '/api/license'
         self.headers = {
             'apikey': self.api_key,
-            'version': int(api_version),
+            # requests header value must be str:
+            #   https://github.com/kennethreitz/requests/issues/3477
+            'version': str(int(api_version)),
         }
 
         try:
