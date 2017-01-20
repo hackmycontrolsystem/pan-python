@@ -211,6 +211,10 @@ deactivate(encryptedtoken=None)
   The token file is exported from the device using ``scp export
   license-token-file`` or ``tftp export license-token-file``.
 
+  Starting with PAN-OS 8.0 you can display the token file using ``show
+  license-token-files name``.  This can be used to export the token
+  file using the PAN-OS XML API.
+
 get(authcode=None)
 ~~~~~~~~~~~~~~~~~~
 
