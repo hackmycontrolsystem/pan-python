@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2016 Palo Alto Networks, Inc. <techbizdev@paloaltonetworks.com>
+# Copyright (c) 2015-2017 Palo Alto Networks, Inc. <techbizdev@paloaltonetworks.com>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -26,6 +26,32 @@ import pan.http
 from pan.licapi import PanLicapiError
 
 _cloud_server = 'api.paloaltonetworks.com'
+
+
+def _wall_time(x):
+    from functools import wraps
+    from timeit import default_timer
+
+    @wraps(x)
+    def wrapper(self, *args, **kwargs):
+        start = default_timer()
+        r = x(self, *args, **kwargs)
+        end = default_timer()
+
+        secs = end-start
+        r.wall_time = secs
+
+        time_str = 'wall time %.2f seconds' % secs
+        if logging.getLogger(__name__).getEffectiveLevel() == DEBUG1:
+            self._log(DEBUG1, '%s() %s' %
+                      (x.__name__, time_str))
+        elif (logging.getLogger(__name__).getEffectiveLevel() in
+              [DEBUG2, DEBUG3]):
+            self._log(DEBUG2, '%s(%s, %s) %s' %
+                      (x.__name__, args, kwargs, time_str))
+        return r
+
+    return wrapper
 
 
 class PanLicapiRequest:
@@ -155,6 +181,7 @@ class PanLicapi:
         self._set_attributes(r)
         return r
 
+    @_wall_time
     def activate(self,
                  authcode=None,
                  uuid=None,
@@ -175,6 +202,7 @@ class PanLicapi:
         r = self._api_request(url, self.headers, data)
         return r
 
+    @_wall_time
     def deactivate(self, encryptedtoken=None):
         endpoint = '/deactivate'
         url = self.base_uri + endpoint
@@ -185,6 +213,7 @@ class PanLicapi:
         r = self._api_request(url, self.headers, data)
         return r
 
+    @_wall_time
     def get(self, authcode=None):
         endpoint = '/get'
         url = self.base_uri + endpoint

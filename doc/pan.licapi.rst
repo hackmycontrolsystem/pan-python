@@ -1,6 +1,6 @@
 ..
  Copyright (c) 2014-2015 Kevin Steves <kevin.steves@pobox.com>
- Copyright (c) 2015-2016 Palo Alto Networks, Inc. <techbizdev@paloaltonetworks.com>
+ Copyright (c) 2015-2017 Palo Alto Networks, Inc. <techbizdev@paloaltonetworks.com>
 
  Permission to use, copy, modify, and distribute this software for any
  purpose with or without fee is hereby granted, provided that the above
@@ -147,6 +147,7 @@ pan.licapi.PanLicapiRequest Class Attributes and Methods
  Attribute              Description
  =================      ===========
  name                   Method name for the request
+ wall_time              Wall time of API request in seconds (floating point number)
  http_code              HTTP response status code
  http_reason            HTTP response status reason
  http_headers           HTTP headers.  This is an **email.message.Message** object.
