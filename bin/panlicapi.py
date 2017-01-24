@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (c) 2015-2016 Palo Alto Networks, Inc. <techbizdev@paloaltonetworks.com>
+# Copyright (c) 2015-2017 Palo Alto Networks, Inc. <techbizdev@paloaltonetworks.com>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -93,7 +93,7 @@ def activate(licapi, options):
         print_exception(action, e)
         sys.exit(1)
 
-    if options['write_keys']:
+    if options['key_file'] or options['xml_file']:
         write_keys(r, options)
 
 
@@ -125,7 +125,7 @@ def get(licapi, options):
 
 def write_keys(r, options):
     if r.json is None:
-        print('No JSON response for -w', file=sys.stderr)
+        print('No JSON response for write license keys', file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(r.json, list):
@@ -142,30 +142,64 @@ def write_keys(r, options):
             continue
 
         prefix = options['uuid'] if options['uuid'] else options['serial']
-        file = prefix + '-' + key['partidField'] + '.key'
-        if options['dst'] is None:
-            path = file
-        else:
-            path = os.path.join(options['dst'], file)
+        files = []
 
-        try:
-            f = open(path, 'w')
-        except IOError as e:
-            print('open %s: %s' % (path, e), file=sys.stderr)
-            continue
-        try:
-            f.write(key['keyField'])
-        except IOError as e:
-            print('write %s: %s' % (path, e), file=sys.stderr)
-            continue
-        finally:
-            f.close()
+        if options['key_file']:
+            file = prefix + '-' + key['partidField'] + '.key'
+            if options['dst'] is None:
+                path = file
+            else:
+                path = os.path.join(options['dst'], file)
+            files.append((path, key['keyField']))
 
-        print('Wrote %s' % path, end='')
-        if 'feature_descField' in key:
-            print(': %s' % key['feature_descField'])
-        else:
-            print()
+        if options['xml_file']:
+            file = prefix + '-' + key['partidField'] + '.xml'
+            if options['dst'] is None:
+                path = file
+            else:
+                path = os.path.join(options['dst'], file)
+            files.append((path, install_xml(key['keyField'])))
+
+        for x in files:
+            if not write_key(*x):
+                continue
+
+            print('Wrote %s' % x[0], end='')
+            if 'feature_descField' in key:
+                print(': %s' % key['feature_descField'])
+            else:
+                print()
+
+
+def write_key(path, x):
+    try:
+        f = open(path, 'w')
+    except IOError as e:
+        print('open %s: %s' % (path, e), file=sys.stderr)
+        return False
+    try:
+        f.write(x)
+    except IOError as e:
+        print('write %s: %s' % (path, e), file=sys.stderr)
+        return False
+    finally:
+        f.close()
+
+    return True
+
+
+def install_xml(x):
+    document = '''\
+<request>
+  <license>
+    <install>
+%s\
+    </install>
+  </license>
+</request>
+'''
+
+    return document % x
 
 
 def print_exception(action, e):
@@ -285,7 +319,8 @@ def parse_opts():
         'uuid': None,
         'token': None,
         'serial': None,
-        'write_keys': False,
+        'key_file': False,
+        'xml_file': False,
         'dst': None,
         'api_key': None,
         'api_version': None,
@@ -298,7 +333,7 @@ def parse_opts():
         'timeout': None,
         }
 
-    short_options = 'K:V:h:pjDt:T:w'
+    short_options = 'K:V:h:pjDt:T:kx'
     long_options = [
         'activate', 'deactivate', 'get', 'authcode=',
         'cpuid=', 'uuid=', 'token=', 'serial=', 'dst=',
@@ -333,8 +368,10 @@ def parse_opts():
             options['token'] = process_arg(arg)
         elif opt == '--serial':
             options['serial'] = arg
-        elif opt == '-w':
-            options['write_keys'] = True
+        elif opt == '-k':
+            options['key_file'] = True
+        elif opt == '-x':
+            options['xml_file'] = True
         elif opt == '--dst':
             if not os.path.isdir(arg):
                 print('Invalid --dst: %s' % arg, file=sys.stderr)
@@ -397,7 +434,8 @@ def usage():
     --uuid id             VM-Series vm-uuid
     --token token         deactivate license token
     --serial serial       get licenses for serial number
-    -w                    write license keys
+    -k                    write license key files
+    -x                    write license install PAN-OS XML API documents
     --dst dir             destination directory for keys (default .)
     -t tag                .panrc tagname
     -K api_key            license API key
