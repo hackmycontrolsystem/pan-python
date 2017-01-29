@@ -164,7 +164,7 @@ def write_keys(r, options):
             if not write_key(*x):
                 continue
 
-            print('Wrote %s' % x[0], end='')
+            print('%s' % os.path.basename(x[0]), end='')
             if 'feature_descField' in key:
                 print(': %s' % key['feature_descField'])
             else:
