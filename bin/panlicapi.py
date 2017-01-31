@@ -224,6 +224,8 @@ def print_status(action, r):
         if length is not None:
             print(' %s' % length, end='', file=sys.stderr)
 
+    print(' %.2fsecs' % r.wall_time, end='', file=sys.stderr)
+
     if r.json is not None:
         if 'Message' in r.json:
             print(' "%s"' % r.json['Message'],
